@@ -1,0 +1,89 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e-tests-uv:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install the project
+        shell: bash
+        run: uv sync --all-extras --dev
+
+      - name: Start otel-gui
+        run: docker run -d --name otel-gui -p 4318:4318 ghcr.io/metafab/otel-gui:v2.1.0
+
+      - name: Wait for otel-gui
+        run: while ! curl -sf 'http://127.0.0.1:4318/api/traces' > /dev/null; do sleep 1; done
+        timeout-minutes: 3
+
+      - name: Start Podman Fleet
+        run: uv run -m uvicorn podmanfleet.main:app --port 8400 &
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+
+      - name: Run the health check validation
+        run: while ! curl -s 'http://localhost:8400/health' | grep 'OK'; do sleep 1; done
+        timeout-minutes: 3
+
+      - name: Run the browser API E2E tests
+        run: make e2e-test
+
+      - name: Verify traces in otel-gui
+        run: |-
+          sleep 5
+          curl -sf 'http://127.0.0.1:4318/api/traces' | grep podman-fleet
+
+  e2e-tests-wheel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install the project
+        shell: bash
+        run: uv sync --all-extras --dev
+
+      - run: uvx hatch build
+
+      - name: List the wheel contents
+        run: unzip -l dist/*.whl
+
+      - name: Start otel-gui
+        run: docker run -d --name otel-gui -p 4318:4318 ghcr.io/metafab/otel-gui:v2.1.0
+
+      - name: Wait for otel-gui
+        run: while ! curl -sf 'http://127.0.0.1:4318/api/traces' > /dev/null; do sleep 1; done
+        timeout-minutes: 3
+
+      - name: Execute the wheel
+        run: uvx ./dist/*.whl &
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+
+      - name: Run the health check validation
+        run: while ! curl -s 'http://localhost:8400/health' | grep 'OK'; do sleep 1; done
+        timeout-minutes: 3
+
+      - name: Run the browser API E2E tests
+        run: make e2e-test
+
+      - name: Verify traces in otel-gui
+        run: |-
+          sleep 5
+          curl -sf 'http://127.0.0.1:4318/api/traces' | grep podman-fleet
