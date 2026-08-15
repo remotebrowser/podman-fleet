@@ -22,7 +22,11 @@ async def _open_browser_cdp_client(browser_id: str) -> CDPClient:
 
 async def _get_page_list(browser_id: str) -> list[str]:
     # Enumerate browser-level pages via Target.getTargets; pages only.
-    client = await _open_browser_cdp_client(browser_id)
+    try:
+        client = await _open_browser_cdp_client(browser_id)
+    except Exception as e:
+        logger.warning(f"[CDP] Could not open CDP client for {browser_id}: {type(e).__name__}: {e}")
+        return []
     try:
         result = await client.send("Target.getTargets")
     except Exception as e:
@@ -40,12 +44,27 @@ async def _find_browser_id(page_id: str) -> str | None:
         c[len(BROWSER_NAME_PREFIX) :] for c in containers if c.startswith(BROWSER_NAME_PREFIX)
     ]
     logger.debug(f"[CDP] scanning {len(browser_ids)} browser(s) for page_id={page_id}")
-    for browser_id in browser_ids:
-        page_ids = await _get_page_list(browser_id)
-        if page_id in page_ids:
-            return browser_id
 
-    return None
+    async def _browser_has_page(browser_id: str) -> str | None:
+        try:
+            page_ids = await _get_page_list(browser_id)
+        except Exception as e:
+            logger.warning(f"[CDP] Could not check pages for {browser_id}: {type(e).__name__}: {e}")
+            return None
+        return browser_id if page_id in page_ids else None
+
+    # Scan every browser concurrently instead of one at a time.
+    tasks = [asyncio.create_task(_browser_has_page(browser_id)) for browser_id in browser_ids]
+    try:
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            if result is not None:
+                return result
+        return None
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: str) -> None:
