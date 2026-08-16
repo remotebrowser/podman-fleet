@@ -5,6 +5,7 @@ import sys
 from typing import Any, cast
 
 import httpx
+from async_lru import alru_cache
 from loguru import logger
 from nanoid import generate
 
@@ -63,16 +64,29 @@ async def _run_podman(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-async def get_host_port(container_name: str, container_port: int) -> int | None:
+# Cache port mappings since they are fixed a container's lifetime.
+@alru_cache(maxsize=128)
+async def _get_host_port_cached(container_name: str, container_port: int) -> int | None:
     try:
         result = await _run_podman(["port", container_name, str(container_port)])
         port_mapping = result.stdout.strip()
         if not port_mapping:
             return None
-        host_port = int(port_mapping.split(":")[-1])
-        return host_port
+        return int(port_mapping.split(":")[-1])
     except subprocess.CalledProcessError:
         return None
+
+
+async def get_host_port(container_name: str, container_port: int) -> int | None:
+    host_port = await _get_host_port_cached(container_name, container_port)
+    if host_port is None:
+        _get_host_port_cached.cache_invalidate(container_name, container_port)
+    return host_port
+
+
+def _evict_host_port_cache(container_name: str) -> None:
+    for port in (9222, 5900):
+        _get_host_port_cached.cache_invalidate(container_name, port)
 
 
 async def launch_container(image_name: str | None = None) -> str:
@@ -155,6 +169,8 @@ async def kill_container(container_name: str) -> None:
             raise Exception(f"Unable to kill container {container_name}")
     except subprocess.CalledProcessError as e:
         raise Exception(f"Unable to kill container {container_name}: {e}")
+    finally:
+        _evict_host_port_cache(container_name)
 
 
 async def terminate_browser(browser_id: str) -> None:

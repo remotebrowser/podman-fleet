@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 from typing import Any
 
 import pytest
@@ -261,3 +262,65 @@ def test_cdp_raw_route_relays_verbatim(monkeypatch: MonkeyPatch) -> None:
     to_browser, to_client = _relay_roundtrip(monkeypatch, "/api/v1/browsers/BID/cdp", "abc1234567")
     assert json.loads(to_browser)["params"]["targetId"] == "abc1234567"
     assert json.loads(to_client)["result"]["targetId"] == "abc1234567"
+
+
+class _FakePodmanPort:
+    """A stand-in for `_run_podman` that answers `podman port` and counts invocations."""
+
+    def __init__(self, stdout: str) -> None:
+        self._stdout = stdout
+        self.calls = 0
+
+    async def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        self.calls += 1
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=self._stdout, stderr="")
+
+
+@pytest.mark.asyncio
+async def test_get_host_port_caches_successful_lookup(monkeypatch: MonkeyPatch) -> None:
+    fake = _FakePodmanPort("0.0.0.0:55001\n")
+    monkeypatch.setattr(podman_browsers, "_run_podman", fake)
+
+    container = "chromium-cache-hit-test"
+    assert await podman_browsers.get_host_port(container, 9222) == 55001
+    assert await podman_browsers.get_host_port(container, 9222) == 55001
+    assert fake.calls == 1  # second call served from cache, no second podman invocation
+
+
+@pytest.mark.asyncio
+async def test_get_host_port_does_not_cache_failed_lookup(monkeypatch: MonkeyPatch) -> None:
+    calls = 0
+
+    async def fake_run_podman(args: list[str]) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(podman_browsers, "_run_podman", fake_run_podman)
+
+    container = "chromium-cache-miss-test"
+    assert await podman_browsers.get_host_port(container, 9222) is None
+    assert await podman_browsers.get_host_port(container, 9222) is None
+    # A failed lookup must not poison the cache: retry loops (e.g. the CDP bridge's boot-race
+    # retries) depend on each call re-querying podman until it succeeds.
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_kill_container_evicts_cached_port(monkeypatch: MonkeyPatch) -> None:
+    fake = _FakePodmanPort("0.0.0.0:55002\n")
+
+    async def fake_run_podman(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args[0] == "kill":
+            return subprocess.CompletedProcess(
+                args=args, returncode=0, stdout="killed\n", stderr=""
+            )
+        return await fake(args)
+
+    monkeypatch.setattr(podman_browsers, "_run_podman", fake_run_podman)
+
+    container = "chromium-cache-evict-test"
+    assert await podman_browsers.get_host_port(container, 9222) == 55002
+    await podman_browsers.kill_container(container)
+    assert await podman_browsers.get_host_port(container, 9222) == 55002
+    assert fake.calls == 2  # re-resolved after eviction instead of serving the stale entry

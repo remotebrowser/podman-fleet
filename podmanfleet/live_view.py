@@ -9,9 +9,16 @@ from podmanfleet.podman_browsers import BROWSER_NAME_PREFIX
 router = APIRouter()
 
 
+async def _resolve_vnc_port(browser_id: str) -> int | None:
+    container_name = f"{BROWSER_NAME_PREFIX}{browser_id}"
+    if not await podman_browsers.container_exists(container_name):
+        return None
+    return await podman_browsers.get_host_port(container_name, 5900)
+
+
 @router.get("/live/{browser_id}", response_model=None)
 async def vnc_live_viewer(browser_id: str) -> HTMLResponse:
-    vnc_port = await podman_browsers.get_host_port(f"{BROWSER_NAME_PREFIX}{browser_id}", 5900)
+    vnc_port = await _resolve_vnc_port(browser_id)
     if vnc_port is not None:
         page = f"""<!DOCTYPE html>
 <html>
@@ -65,7 +72,7 @@ async def vnc_live_viewer(browser_id: str) -> HTMLResponse:
 
 @router.websocket("/websockify/{browser_id}")
 async def websockify_proxy(websocket: WebSocket, browser_id: str) -> None:
-    vnc_port = await podman_browsers.get_host_port(f"{BROWSER_NAME_PREFIX}{browser_id}", 5900)
+    vnc_port = await _resolve_vnc_port(browser_id)
     if vnc_port is None:
         await websocket.close()
         return
