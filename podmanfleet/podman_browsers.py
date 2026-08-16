@@ -227,6 +227,15 @@ async def _get_container_last_activity(container_name: str) -> float | None:
         return None
 
 
+def _redact_proxy_url(url: str) -> str:
+    """Mask the userinfo (username:password) portion of a proxy URL/upstream string."""
+    creds_and_scheme, sep, host_and_port = url.rpartition("@")
+    if not sep:
+        return url
+    scheme_prefix = creds_and_scheme.split("//", 1)[0] + "//" if "//" in creds_and_scheme else ""
+    return f"{scheme_prefix}***:***@{host_and_port}"
+
+
 async def configure_container(container_name: str, proxy_url: str | None) -> bool:
     """Apply `proxy_url` (an http://... upstream) to the container's tinyproxy.
 
@@ -235,10 +244,12 @@ async def configure_container(container_name: str, proxy_url: str | None) -> boo
     `ProxyVerificationError`."""
     if not proxy_url:
         return True
-    logger.info(f"Configuring container {container_name} with proxy_url={proxy_url}...")
+    logger.info(
+        f"Configuring container {container_name} with proxy_url={_redact_proxy_url(proxy_url)}..."
+    )
     try:
         upstream = proxy_url.removeprefix("http://")
-        logger.debug(f"Configuring proxy with upstream: {upstream}")
+        logger.debug(f"Configuring proxy with upstream: {_redact_proxy_url(upstream)}")
         logger.info(f"Modifying tinyproxy.conf in {container_name}...")
         await _run_podman([
             "exec",
