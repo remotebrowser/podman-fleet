@@ -82,7 +82,9 @@ async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: s
                 try:
                     while True:
                         message = await client_ws.receive_text()
-                        logger.debug(f"[CDP] Client -> Remote: {message[:100]}")
+                        logger.opt(lazy=True).debug(
+                            "[CDP] Client -> Remote: {}", lambda: message[:100]
+                        )
                         await remote_ws.send(message)
                 except (WebSocketDisconnect, RuntimeError):
                     logger.info("[CDP] Client disconnected")
@@ -93,7 +95,9 @@ async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: s
                 try:
                     async for message in remote_ws:
                         msg_text = message if isinstance(message, str) else message.decode()
-                        logger.debug(f"[CDP] Remote -> Client: {msg_text[:100]}")
+                        logger.opt(lazy=True).debug(
+                            "[CDP] Remote -> Client: {}", lambda: msg_text[:100]
+                        )
                         if client_ws.client_state == WebSocketState.CONNECTED:
                             await client_ws.send_text(msg_text)
                         else:
