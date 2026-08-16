@@ -324,8 +324,10 @@ async def get_container_public_ip(
 async def query_browser_info(browser_id: str) -> tuple[float | None, str | None]:
     """Return the last-activity timestamp and public IP for `browser_id`."""
     container_name = f"{BROWSER_NAME_PREFIX}{browser_id}"
-    last_activity_timestamp = await _get_container_last_activity(container_name)
-    ip = await get_container_public_ip(container_name)
+    last_activity_timestamp, ip = await asyncio.gather(
+        _get_container_last_activity(container_name),
+        get_container_public_ip(container_name),
+    )
     return last_activity_timestamp, ip
 
 

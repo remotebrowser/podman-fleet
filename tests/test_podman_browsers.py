@@ -156,6 +156,31 @@ async def test_configure_container_returns_true_without_proxy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_query_browser_info_runs_lookups_concurrently(monkeypatch: MonkeyPatch) -> None:
+    finished: list[str] = []
+
+    async def fake_last_activity(container_name: str) -> float | None:
+        await asyncio.sleep(0.05)
+        finished.append("activity")
+        return 42.0
+
+    async def fake_public_ip(container_name: str) -> str | None:
+        finished.append("ip")  # finishes immediately, before the slower activity lookup
+        return "1.2.3.4"
+
+    monkeypatch.setattr(podman_browsers, "_get_container_last_activity", fake_last_activity)
+    monkeypatch.setattr(podman_browsers, "get_container_public_ip", fake_public_ip)
+
+    result = await podman_browsers.query_browser_info("b0")
+
+    assert result == (42.0, "1.2.3.4")
+    # Proves the two lookups run concurrently rather than back-to-back: the fast IP lookup
+    # finishes before the slower activity lookup, which would be impossible if they were
+    # awaited sequentially in (activity, ip) order.
+    assert finished == ["ip", "activity"]
+
+
+@pytest.mark.asyncio
 async def test_list_browser_ids_strips_prefix_and_filters(monkeypatch: MonkeyPatch) -> None:
     async def fake_list_containers() -> list[str]:
         return ["chromium-Pabc12345", "otel-gui", "chromium-Pdef67890"]
