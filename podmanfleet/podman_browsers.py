@@ -25,9 +25,7 @@ _VALID_BROWSER_ID_CHARS = frozenset(_FRIENDLY_CHARS.upper() + _FRIENDLY_CHARS.lo
 
 def is_valid_browser_id(browser_id: str) -> bool:
     """True if `browser_id` is shaped like a server-assigned id."""
-    return 0 < len(browser_id) <= 20 and all(
-        c in _VALID_BROWSER_ID_CHARS for c in browser_id
-    )
+    return 0 < len(browser_id) <= 20 and all(c in _VALID_BROWSER_ID_CHARS for c in browser_id)
 
 
 # uvloop's child process watcher can cause asyncio.create_subprocess_exec to hang
