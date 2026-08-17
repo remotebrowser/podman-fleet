@@ -27,7 +27,7 @@ jobs:
       - name: Pull Chromium container image
         env:
           CONTAINER_HOST: unix:///run/podman/podman.sock
-        run: podman --remote pull ghcr.io/remotebrowser/chromium-live
+        run: podman --remote pull ghcr.io/remotebrowser/chrome-live
 
       - name: Build container image
         shell: bash
