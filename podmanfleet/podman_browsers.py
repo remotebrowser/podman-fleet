@@ -20,6 +20,15 @@ BROWSER_NAME_PREFIX = "chromium-"
 # Charset for server-assigned browser ids (no ambiguous 0/O, 1/l or vowels that spell words).
 _FRIENDLY_CHARS = "23456789abcdefghijkmnpqrstuvwxyz"
 
+_VALID_BROWSER_ID_CHARS = frozenset(_FRIENDLY_CHARS.upper() + _FRIENDLY_CHARS.lower())
+
+
+def is_valid_browser_id(browser_id: str) -> bool:
+    """True if `browser_id` is shaped like a server-assigned id."""
+    return 0 < len(browser_id) <= 20 and all(
+        c in _VALID_BROWSER_ID_CHARS for c in browser_id
+    )
+
 
 # uvloop's child process watcher can cause asyncio.create_subprocess_exec to hang
 # indefinitely. When uvloop is the active event loop, fall back to running the

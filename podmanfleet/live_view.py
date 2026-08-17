@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket
 from fastapi.responses import HTMLResponse
 
 from podmanfleet import podman_browsers
@@ -18,6 +18,9 @@ async def _resolve_vnc_port(browser_id: str) -> int | None:
 
 @router.get("/live/{browser_id}", response_model=None)
 async def vnc_live_viewer(browser_id: str) -> HTMLResponse:
+    if not podman_browsers.is_valid_browser_id(browser_id):
+        raise HTTPException(status_code=404, detail="Browser not found")
+
     vnc_port = await _resolve_vnc_port(browser_id)
     if vnc_port is not None:
         page = f"""<!DOCTYPE html>
@@ -72,6 +75,10 @@ async def vnc_live_viewer(browser_id: str) -> HTMLResponse:
 
 @router.websocket("/websockify/{browser_id}")
 async def websockify_proxy(websocket: WebSocket, browser_id: str) -> None:
+    if not podman_browsers.is_valid_browser_id(browser_id):
+        await websocket.close(code=4404, reason="Browser not found")
+        return
+
     vnc_port = await _resolve_vnc_port(browser_id)
     if vnc_port is None:
         await websocket.close()

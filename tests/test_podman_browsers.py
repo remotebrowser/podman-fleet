@@ -11,6 +11,37 @@ from podmanfleet import api_router, podman_browsers
 from podmanfleet.podman_browsers import ProxyVerificationError
 
 
+@pytest.mark.parametrize(
+    "browser_id",
+    [
+        "Pabc23456",
+        "abc23456",
+        "UPPERCASE",
+        "a",
+        "a" * 20,
+    ],
+)
+def test_is_valid_browser_id_accepts_friendly_ids(browser_id: str) -> None:
+    assert podman_browsers.is_valid_browser_id(browser_id)
+
+
+@pytest.mark.parametrize(
+    "browser_id",
+    [
+        "",
+        "a" * 21,  # one past the max length
+        '"><script>alert(1)</script>',
+        "../etc/passwd",
+        "has space",
+        "has/slash",
+        "has_underscore",
+        "has-dash",
+    ],
+)
+def test_is_valid_browser_id_rejects_unfriendly_ids(browser_id: str) -> None:
+    assert not podman_browsers.is_valid_browser_id(browser_id)
+
+
 def _patch_proxy(monkeypatch: MonkeyPatch, *, ips: list[str | None], proxy_ok: bool = True) -> None:
     """Force a configured proxy and drive get_container_public_ip's return sequence."""
 
