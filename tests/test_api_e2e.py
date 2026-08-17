@@ -29,12 +29,9 @@ class TestHealthEndpoint:
 
 @pytest.mark.e2e
 class TestBrowserLifecycle:
-    def __init__(self) -> None:
-        self.browser_ids: list[str] = []
-
     @pytest.fixture(autouse=True)
     def cleanup(self, client: httpx.Client) -> Generator[None, None, None]:
-        self.browser_ids = []
+        self.browser_ids: list[str] = []
         yield
         for browser_id in self.browser_ids:
             try:
