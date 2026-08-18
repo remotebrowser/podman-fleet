@@ -108,8 +108,7 @@ async def launch_container(image_name: str | None = None) -> str:
         "--name",
         container_name,
     ]
-    if settings.CONTAINER_HOST:
-        cmd.extend(["--cpus", "1", "--memory", "2048m"])
+    cmd.extend(["--cpus", "2", "--memory", "4096m"])
     if sys.platform == "darwin":
         cmd.append("--privileged")
 
