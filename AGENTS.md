@@ -16,6 +16,8 @@ All code lives in the `podmanfleet` package (installed with `uv sync`); importin
 - Live view — a noVNC page plus a WebSocket↔TCP bridge to the container's VNC port
 - Settings — pydantic-settings reading `.env`; see `.env.template` for keys
 
+Keep comments, commit messages, and notes brief. Explain _why_ the code is needed, not _what_ it does. Use clear, simple, and natural English that is easy for non-native speakers to understand.
+
 ## Common Commands
 
 ```bash
