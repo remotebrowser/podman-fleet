@@ -2,7 +2,7 @@
 
 .PHONY: dev
 dev:
-	uv run -m uvicorn podmanfleet.main:app --reload --host 127.0.0.1 --port 8400
+	uv run podmanfleet --reload
 
 .PHONY: format-backend
 format-backend:
