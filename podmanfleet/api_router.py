@@ -6,6 +6,7 @@ from loguru import logger
 
 from podmanfleet import podman_browsers
 from podmanfleet.cdp_bridge import router as cdp_router
+from podmanfleet.config import settings
 from podmanfleet.live_view import router as vnc_router
 from podmanfleet.podman_browsers import ProxyVerificationError
 
@@ -15,6 +16,18 @@ router = APIRouter()
 @router.post("/api/v1/browsers")
 async def launch_browser(request: Request) -> dict[str, Any]:
     logger.info("Launching browser (server-assigned id)...")
+
+    max_browsers = settings.MAX_BROWSERS
+    if max_browsers > 0:
+        running = await podman_browsers.count_running_browsers()
+        if running >= max_browsers:
+            detail = (
+                f"At browser capacity ({running}/{max_browsers}). "
+                "Terminate an existing browser before launching a new one."
+            )
+            logger.warning(detail)
+            raise HTTPException(status_code=429, detail=detail)
+
     try:
         origin_ip = request.headers.get("x-origin-ip")
         browser_id = await podman_browsers.launch_container()

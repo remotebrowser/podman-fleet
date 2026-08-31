@@ -22,6 +22,10 @@ class BrowserSettings(BaseSettings):
     MAXMIND_ACCOUNT_ID: int = 0
     MAXMIND_LICENSE_KEY: str = ""
 
+    # Limit the number of concurrently running browser containers.
+    # 0 (default) means unlimited.
+    MAX_BROWSERS: int = 0
+
     @property
     def MASSIVE_PROXY_ENABLED(self) -> bool:
         return bool(self.MASSIVE_PROXY_USERNAME and self.MASSIVE_PROXY_PASSWORD)
