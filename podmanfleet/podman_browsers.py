@@ -204,6 +204,16 @@ async def list_browser_ids() -> list[str]:
     return [c[len(BROWSER_NAME_PREFIX) :] for c in containers if c.startswith(BROWSER_NAME_PREFIX)]
 
 
+async def count_running_browsers() -> int:
+    """Return the number of currently running browser containers."""
+    containers = await list_containers()
+    count = 0
+    for name in containers:
+        if name.startswith(BROWSER_NAME_PREFIX) and await _container_is_running(name):
+            count += 1
+    return count
+
+
 async def _get_container_last_activity(container_name: str) -> float | None:
     try:
         await _run_podman([

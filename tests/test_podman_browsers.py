@@ -380,3 +380,106 @@ async def test_kill_container_evicts_cached_port(monkeypatch: MonkeyPatch) -> No
     await podman_browsers.kill_container(container)
     assert await podman_browsers.get_host_port(container, 9222) == 55002
     assert fake.calls == 2  # re-resolved after eviction instead of serving the stale entry
+
+
+@pytest.mark.asyncio
+async def test_count_running_browsers_counts_only_running(monkeypatch: MonkeyPatch) -> None:
+    async def fake_list_containers() -> list[str]:
+        return ["chromium-Pabc12345", "otel-gui", "chromium-Pdef67890"]
+
+    running = {"chromium-Pabc12345": True, "chromium-Pdef67890": False}
+
+    async def fake_container_is_running(container_name: str) -> bool:
+        return running.get(container_name, False)
+
+    monkeypatch.setattr(podman_browsers, "list_containers", fake_list_containers)
+    monkeypatch.setattr(podman_browsers, "_container_is_running", fake_container_is_running)
+
+    count = await podman_browsers.count_running_browsers()
+    assert count == 1  # only Pabc12345 is running
+
+
+@pytest.mark.asyncio
+async def test_count_running_browsers_zero_when_no_browser_containers(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    async def fake_list_containers() -> list[str]:
+        return ["otel-gui", "some-other-container"]
+
+    monkeypatch.setattr(podman_browsers, "list_containers", fake_list_containers)
+
+    count = await podman_browsers.count_running_browsers()
+    assert count == 0
+
+
+def test_launch_refused_when_at_capacity(monkeypatch: MonkeyPatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from podmanfleet.config import settings
+
+    async def fake_count_running() -> int:
+        return 3
+
+    monkeypatch.setattr(podman_browsers, "count_running_browsers", fake_count_running)
+    monkeypatch.setattr(settings, "MAX_BROWSERS", 3)
+
+    app = FastAPI()
+    app.include_router(api_router.router)
+    client = TestClient(app)
+
+    response = client.post("/api/v1/browsers")
+    assert response.status_code == 429
+    assert "3/3" in response.json()["detail"]
+
+
+def test_launch_allowed_when_under_capacity(monkeypatch: MonkeyPatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from podmanfleet.config import settings
+
+    async def fake_count_running() -> int:
+        return 1
+
+    async def fake_launch(*args: Any, **kwargs: Any) -> str:
+        return "P12345678"
+
+    async def fake_configure(*args: Any, **kwargs: Any) -> str:
+        return "9.9.9.9"
+
+    monkeypatch.setattr(podman_browsers, "count_running_browsers", fake_count_running)
+    monkeypatch.setattr(podman_browsers, "launch_container", fake_launch)
+    monkeypatch.setattr(podman_browsers, "configure_browser", fake_configure)
+    monkeypatch.setattr(settings, "MAX_BROWSERS", 3)
+
+    app = FastAPI()
+    app.include_router(api_router.router)
+    client = TestClient(app)
+
+    response = client.post("/api/v1/browsers")
+    assert response.status_code == 200
+
+
+def test_launch_allowed_when_max_browsers_is_unset(monkeypatch: MonkeyPatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from podmanfleet.config import settings
+
+    async def fake_launch(*args: Any, **kwargs: Any) -> str:
+        return "P12345678"
+
+    async def fake_configure(*args: Any, **kwargs: Any) -> str:
+        return "9.9.9.9"
+
+    monkeypatch.setattr(podman_browsers, "launch_container", fake_launch)
+    monkeypatch.setattr(podman_browsers, "configure_browser", fake_configure)
+    monkeypatch.setattr(settings, "MAX_BROWSERS", 0)
+
+    app = FastAPI()
+    app.include_router(api_router.router)
+    client = TestClient(app)
+
+    response = client.post("/api/v1/browsers")
+    assert response.status_code == 200
