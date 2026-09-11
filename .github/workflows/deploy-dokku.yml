@@ -1,8 +1,6 @@
 name: Deploy Dokku
 
 on:
-  # TEST
-  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
