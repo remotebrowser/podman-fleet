@@ -14,6 +14,8 @@ from podmanfleet.residential_proxy import get_proxy_config
 
 _DOCKER_INTERNAL_HOST = "172.17.0.1"
 
+BROWSER_TRACE_PORT = 8088
+
 # Shared name prefix: a browser with id `abc` is a podman container named `chromium-abc`.
 BROWSER_NAME_PREFIX = "chromium-"
 
@@ -92,7 +94,7 @@ async def get_host_port(container_name: str, container_port: int) -> int | None:
 
 
 def _evict_host_port_cache(container_name: str) -> None:
-    for port in (9222, 5900):
+    for port in (9222, 5900, BROWSER_TRACE_PORT):
         _get_host_port_cached.cache_invalidate(container_name, port)
 
 
@@ -117,6 +119,8 @@ async def launch_container(image_name: str | None = None) -> str:
         "9222",
         "-p",
         "5900",
+        "-p",
+        str(BROWSER_TRACE_PORT),
         image,
     ])
     try:

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from podmanfleet import podman_browsers
+from podmanfleet.browser_trace import router as browser_trace_router
 from podmanfleet.cdp_bridge import router as cdp_router
 from podmanfleet.config import settings
 from podmanfleet.live_view import router as vnc_router
@@ -93,5 +94,6 @@ async def list_browsers() -> JSONResponse:
         raise HTTPException(status_code=500, detail=detail)
 
 
+router.include_router(browser_trace_router)
 router.include_router(cdp_router)
 router.include_router(vnc_router)
