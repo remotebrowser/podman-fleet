@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      config:
+        description: Which host to deploy to
+        type: choice
+        default: both
+        options: [both, prd_podmanfleet, prd_podmanfleet_lambda]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +27,9 @@ jobs:
       # One host must not block the other.
       fail-fast: false
       matrix:
-        config: [prd_podmanfleet, prd_podmanfleet_lambda]
+        # A push deploys everywhere; workflow_dispatch can pick one host.
+        config: ${{ fromJSON((inputs.config == '' || inputs.config == 'both') && '["prd_podmanfleet", "prd_podmanfleet_lambda"]'
+          || format('["{0}"]', inputs.config)) }}
     env:
       DOPPLER_CONFIG: ${{ matrix.config }}
     steps:
