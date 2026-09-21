@@ -11,12 +11,19 @@ concurrency:
 
 env:
   DOPPLER_PROJECT: fleet
-  DOPPLER_CONFIG: prd_podmanfleet
 
 jobs:
   deploy:
+    name: deploy (${{ matrix.config }})
     runs-on: ubuntu-22.04
     timeout-minutes: 45
+    strategy:
+      # One host must not block the other.
+      fail-fast: false
+      matrix:
+        config: [prd_podmanfleet, prd_podmanfleet_lambda]
+    env:
+      DOPPLER_CONFIG: ${{ matrix.config }}
     steps:
       - name: Check out source repository
         uses: actions/checkout@v4
