@@ -24,10 +24,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     strategy:
-      # One host must not block the other.
       fail-fast: false
       matrix:
-        # A push deploys everywhere; workflow_dispatch can pick one host.
         config: ${{ fromJSON((inputs.host == '' || inputs.host == 'both') && '["prd_podmanfleet", "prd_podmanfleet_lambda"]'
           || inputs.host == 'gce' && '["prd_podmanfleet"]' || '["prd_podmanfleet_lambda"]') }}
     env:
