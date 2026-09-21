@@ -99,18 +99,17 @@ async def test_configure_browser_raises_when_ip_unchanged(monkeypatch: MonkeyPat
 
 @pytest.mark.asyncio
 async def test_configure_browser_noop_without_proxy(monkeypatch: MonkeyPatch) -> None:
-    # No proxy configured: it's a no-op that returns the current egress IP (no verification needed).
+    # No proxy configured: a no-op that skips the egress IP probe, which costs seconds at launch.
     async def fake_get_proxy_config(*args: Any, **kwargs: Any) -> None:
         return None
 
     async def fake_public_ip(*args: Any, **kwargs: Any) -> str | None:
-        return "1.1.1.1"
+        raise AssertionError("IP probe must not run without a proxy")
 
     monkeypatch.setattr(podman_browsers, "get_proxy_config", fake_get_proxy_config)
     monkeypatch.setattr(podman_browsers, "get_container_public_ip", fake_public_ip)
 
-    ip = await podman_browsers.configure_browser("b0", None)
-    assert ip == "1.1.1.1"
+    assert await podman_browsers.configure_browser("b0", None) is None
 
 
 def test_get_browser_never_reconfigures_proxy(monkeypatch: MonkeyPatch) -> None:
