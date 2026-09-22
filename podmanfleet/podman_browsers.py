@@ -265,38 +265,24 @@ async def configure_container(container_name: str, proxy_url: str | None) -> boo
     )
     try:
         upstream = proxy_url.removeprefix("http://")
-        logger.debug(f"Configuring proxy with upstream: {_redact_proxy_url(upstream)}")
-        logger.info(f"Modifying tinyproxy.conf in {container_name}...")
+        script = (
+            'sed -i "/^Upstream http/d" /app/tinyproxy.conf && '
+            'printf "Upstream http %s\\n" "$UPSTREAM" >>/app/tinyproxy.conf && '
+            "{ s6-svc -r /run/service/tinyproxy 2>/dev/null "
+            "|| sudo /command/s6-svc -r /run/service/tinyproxy 2>/dev/null "
+            "|| { pkill tinyproxy; tinyproxy -c /app/tinyproxy.conf; }; } && "
+            "for _ in $(seq 1 100); do "
+            "curl -s -o /dev/null -x http://127.0.0.1:8119 http://tinyproxy.stats && exit 0; "
+            "sleep 0.1; done; exit 1"
+        )
         await _run_podman([
             "exec",
-            container_name,
-            "sed",
-            "-i",
-            "/^Upstream http/d",
-            "/app/tinyproxy.conf",
-        ])
-        await _run_podman([
-            "exec",
-            container_name,
-            "sed",
-            "-i",
-            f"$ a\\Upstream http {upstream}",
-            "/app/tinyproxy.conf",
-        ])
-        logger.info(f"Restarting tinyproxy in {container_name}...")
-        await _run_podman([
-            "exec",
+            "-e",
+            f"UPSTREAM={upstream}",
             container_name,
             "sh",
             "-c",
-            "pkill tinyproxy || true",
-        ])
-        await _run_podman([
-            "exec",
-            container_name,
-            "sh",
-            "-c",
-            "tinyproxy -d -c /app/tinyproxy.conf &",
+            script,
         ])
         logger.info(f"Proxy configured successfully in {container_name}.")
         return True
@@ -367,16 +353,16 @@ async def configure_browser(
     The proxy is mandatory when one is configured: it MUST apply and change the egress IP,
     otherwise this raises `ProxyVerificationError` (the endpoint maps it to 500, so the client can
     retry rather than get an unproxied browser). If no proxy is configured, this is a no-op (proxy
-    is not required) and the current egress IP is returned."""
+    is not required) and returns None."""
     container_name = f"{BROWSER_NAME_PREFIX}{browser_id}"
     proxy_config = await get_proxy_config(origin_ip, settings)
     proxy_url = proxy_config.get_proxy_url(browser_id) if proxy_config else None
 
+    if not proxy_url:
+        return None
+
     ip_before = await get_container_public_ip(container_name)
     logger.debug(f"Browser {browser_id} IP before applying config: {ip_before}")
-
-    if not proxy_url:
-        return ip_before  # no proxy configured; proxy is not required for this browser
 
     ok = await configure_container(container_name, proxy_url)
     if not ok:
