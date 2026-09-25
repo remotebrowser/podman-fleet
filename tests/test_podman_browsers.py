@@ -126,12 +126,12 @@ def test_get_browser_never_reconfigures_proxy(monkeypatch: MonkeyPatch) -> None:
     async def fake_running(browser_id: str) -> bool:
         return True
 
-    async def fake_query_info(browser_id: str) -> tuple[Any, Any]:
-        return 1.0, "9.9.9.9"
+    async def fake_last_activity(browser_id: str) -> float | None:
+        return 1.0
 
     monkeypatch.setattr(podman_browsers, "configure_browser", fake_configure)
     monkeypatch.setattr(podman_browsers, "browser_is_running", fake_running)
-    monkeypatch.setattr(podman_browsers, "query_browser_info", fake_query_info)
+    monkeypatch.setattr(podman_browsers, "query_last_activity", fake_last_activity)
 
     app = FastAPI()
     app.include_router(api_router.router)
@@ -145,7 +145,6 @@ def test_get_browser_never_reconfigures_proxy(monkeypatch: MonkeyPatch) -> None:
     assert response.json() == {
         "browser_id": "b0",
         "last_activity_timestamp": 1.0,
-        "ip": "9.9.9.9",
     }
     assert configured is False
 
@@ -183,31 +182,6 @@ def test_launch_browser_propagates_proxy_verification_error(monkeypatch: MonkeyP
 async def test_configure_container_returns_true_without_proxy() -> None:
     # No proxy_url: a no-op success (proxy is not required for this browser).
     assert await podman_browsers.configure_container("chromium-b0", None) is True
-
-
-@pytest.mark.asyncio
-async def test_query_browser_info_runs_lookups_concurrently(monkeypatch: MonkeyPatch) -> None:
-    finished: list[str] = []
-
-    async def fake_last_activity(container_name: str) -> float | None:
-        await asyncio.sleep(0.05)
-        finished.append("activity")
-        return 42.0
-
-    async def fake_public_ip(container_name: str) -> str | None:
-        finished.append("ip")  # finishes immediately, before the slower activity lookup
-        return "1.2.3.4"
-
-    monkeypatch.setattr(podman_browsers, "_get_container_last_activity", fake_last_activity)
-    monkeypatch.setattr(podman_browsers, "get_container_public_ip", fake_public_ip)
-
-    result = await podman_browsers.query_browser_info("b0")
-
-    assert result == (42.0, "1.2.3.4")
-    # Proves the two lookups run concurrently rather than back-to-back: the fast IP lookup
-    # finishes before the slower activity lookup, which would be impossible if they were
-    # awaited sequentially in (activity, ip) order.
-    assert finished == ["ip", "activity"]
 
 
 @pytest.mark.asyncio
