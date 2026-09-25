@@ -73,12 +73,11 @@ async def get_browser(browser_id: str) -> dict[str, Any]:
         detail = f"Browser {browser_id} not found!"
         logger.warning(detail)
         raise HTTPException(status_code=404, detail=detail)
-    last_activity_timestamp, ip = await podman_browsers.query_browser_info(browser_id)
+    last_activity_timestamp = await podman_browsers.query_last_activity(browser_id)
     logger.debug(f"Browser {browser_id}: last_activity_timestamp={last_activity_timestamp}.")
     return {
         "browser_id": browser_id,
         "last_activity_timestamp": last_activity_timestamp,
-        "ip": ip,
     }
 
 
