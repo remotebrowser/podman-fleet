@@ -8,11 +8,14 @@ import httpx
 from async_lru import alru_cache
 from loguru import logger
 from nanoid import generate
+from opentelemetry import trace
 
 from podmanfleet.config import settings
 from podmanfleet.residential_proxy import get_proxy_config
 
 _DOCKER_INTERNAL_HOST = "172.17.0.1"
+
+_tracer = trace.get_tracer(__name__)
 
 # Shared name prefix: a browser with id `abc` is a podman container named `chromium-abc`.
 BROWSER_NAME_PREFIX = "chromium-"
@@ -300,6 +303,7 @@ def container_host() -> str:
     return _DOCKER_INTERNAL_HOST if os.path.exists("/.dockerenv") else "127.0.0.1"
 
 
+@_tracer.start_as_current_span("get_container_public_ip")
 async def get_container_public_ip(
     container_name: str, *, retries: int = 5, retry_delay: float = 2.0
 ) -> str | None:
@@ -309,7 +313,7 @@ async def get_container_public_ip(
                 "exec",
                 container_name,
                 "curl",
-                "-s",
+                "-sS",
                 "--max-time",
                 "10",
                 "--proxy",
@@ -319,15 +323,15 @@ async def get_container_public_ip(
             ip = result.stdout.strip() or None
             if ip:
                 return ip
-            logger.debug(
+            logger.warning(
                 f"IP check attempt {attempt}/{retries} in {container_name}: empty response (stderr: {result.stderr.strip()!r})"
             )
         except subprocess.CalledProcessError as e:
-            logger.debug(
+            logger.warning(
                 f"IP check attempt {attempt}/{retries} in {container_name} failed (exit {e.returncode}): {e.stderr.strip()!r}"
             )
         except Exception as e:
-            logger.debug(f"IP check attempt {attempt}/{retries} in {container_name} failed: {e}")
+            logger.warning(f"IP check attempt {attempt}/{retries} in {container_name} failed: {e}")
         if attempt < retries:
             await asyncio.sleep(retry_delay)
     logger.warning(f"IP check in {container_name} failed after {retries} attempts")
