@@ -55,7 +55,10 @@ def setup_otel() -> None:
 def instrument_fastapi(app: FastAPI) -> None:
     if not _otel_enabled():
         return
-    FastAPIInstrumentor.instrument_app(app, excluded_urls="/health")
+    # Skip the per-message spans: they would be two per relayed CDP frame, thousands per session.
+    FastAPIInstrumentor.instrument_app(
+        app, excluded_urls="/health", exclude_spans=["send", "receive"]
+    )
 
 
 def otel_loguru_handler() -> "HandlerConfig | None":
