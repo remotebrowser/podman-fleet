@@ -1,7 +1,9 @@
 import asyncio
+import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from typing import Any, cast
 
 import httpx
@@ -9,6 +11,7 @@ from async_lru import alru_cache
 from loguru import logger
 from nanoid import generate
 from opentelemetry import trace
+from pydantic import BaseModel
 
 from podmanfleet.config import settings
 from podmanfleet.residential_proxy import get_proxy_config
@@ -205,6 +208,30 @@ async def list_containers() -> list[str]:
 async def list_browser_ids() -> list[str]:
     containers = await list_containers()
     return [c[len(BROWSER_NAME_PREFIX) :] for c in containers if c.startswith(BROWSER_NAME_PREFIX)]
+
+
+class BrowserInfo(BaseModel):
+    browser_id: str
+    created_at: datetime
+
+
+async def list_browsers() -> list[BrowserInfo]:
+    """Every running browser."""
+    try:
+        result = await _run_podman(["container", "ls", "--format", "json"])
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Unable to list all containers: {e}")
+    browsers: list[BrowserInfo] = []
+    for container in json.loads(result.stdout or "[]"):
+        for name in container.get("Names") or []:
+            if name.startswith(BROWSER_NAME_PREFIX):
+                browsers.append(
+                    BrowserInfo(
+                        browser_id=name[len(BROWSER_NAME_PREFIX) :],
+                        created_at=datetime.fromtimestamp(container["Created"], tz=timezone.utc),
+                    )
+                )
+    return browsers
 
 
 async def count_running_browsers() -> int:
