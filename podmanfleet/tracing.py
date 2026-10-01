@@ -14,6 +14,7 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from podmanfleet.config import settings
 
@@ -59,6 +60,29 @@ def instrument_fastapi(app: FastAPI) -> None:
     FastAPIInstrumentor.instrument_app(
         app, excluded_urls="/health", exclude_spans=["send", "receive"]
     )
+
+
+def logfire_token() -> str:
+    """The Logfire write token, pulled from the `Authorization` entry of
+    `OTEL_EXPORTER_OTLP_HEADERS` (the same token already authenticates this app's own
+    OTLP export to Logfire) rather than provisioning a second copy of the same secret."""
+    for pair in settings.OTEL_EXPORTER_OTLP_HEADERS.split(","):
+        key, _, value = pair.partition("=")
+        if key.strip().lower() == "authorization":
+            return value.strip()
+    return ""
+
+
+def current_traceparent() -> str:
+    """W3C traceparent for the span active when this is called.
+
+    Empty string when OTel is disabled or there's no active span — callers
+    should treat "" as "omit LOGFIRE_TRACEPARENT"."""
+    if not _otel_enabled():
+        return ""
+    carrier: dict[str, str] = {}
+    TraceContextTextMapPropagator().inject(carrier)
+    return carrier.get("traceparent", "")
 
 
 def otel_loguru_handler() -> "HandlerConfig | None":

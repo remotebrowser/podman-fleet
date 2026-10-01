@@ -16,6 +16,7 @@ class _Settings(BrowserSettings, BaseSettings):
 
     # Logging / OpenTelemetry
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
     OTEL_SERVICE_NAME: str = "podman-fleet"
     OTEL_LOG_LEVEL: str = "INFO"
     SENTRY_DSN: str = ""

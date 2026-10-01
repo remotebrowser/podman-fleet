@@ -12,6 +12,7 @@ from opentelemetry import trace
 
 from podmanfleet.config import settings
 from podmanfleet.residential_proxy import get_proxy_config
+from podmanfleet.tracing import current_traceparent, logfire_token
 
 _DOCKER_INTERNAL_HOST = "172.17.0.1"
 
@@ -114,6 +115,16 @@ async def launch_container(image_name: str | None = None) -> str:
     cmd.extend(["--cpus", "2", "--memory", "4096m"])
     if sys.platform == "darwin":
         cmd.append("--privileged")
+
+    container_env = {
+        "SERVICE_NAME": settings.OTEL_SERVICE_NAME,
+        "ENVIRONMENT": settings.ENVIRONMENT,
+        "LOG_LEVEL": settings.OTEL_LOG_LEVEL,
+        "LOGFIRE_TOKEN": logfire_token(),
+        "LOGFIRE_TRACEPARENT": current_traceparent(),
+    }
+    for key, value in container_env.items():
+        cmd.extend(["-e", f"{key}={value}"])
 
     cmd.extend([
         "-p",

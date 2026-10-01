@@ -336,6 +336,36 @@ async def test_get_host_port_does_not_cache_failed_lookup(monkeypatch: MonkeyPat
 
 
 @pytest.mark.asyncio
+async def test_launch_container_passes_logfire_env_vars(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(podman_browsers.settings, "OTEL_SERVICE_NAME", "svc-under-test")
+    monkeypatch.setattr(podman_browsers.settings, "ENVIRONMENT", "test-env")
+    monkeypatch.setattr(podman_browsers.settings, "OTEL_LOG_LEVEL", "DEBUG")
+    monkeypatch.setattr(podman_browsers, "logfire_token", lambda: "lf-token-abc")
+    monkeypatch.setattr(podman_browsers, "current_traceparent", lambda: "00-trace-span-01")
+
+    captured_cmd: list[str] = []
+
+    async def fake_run_podman(args: list[str]) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(args)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="abc123\n", stderr="")
+
+    async def fake_get_host_port(container_name: str, port: int) -> int:
+        return 55000
+
+    monkeypatch.setattr(podman_browsers, "_run_podman", fake_run_podman)
+    monkeypatch.setattr(podman_browsers, "get_host_port", fake_get_host_port)
+
+    await podman_browsers.launch_container()
+
+    assert "-e" in captured_cmd
+    assert "SERVICE_NAME=svc-under-test" in captured_cmd
+    assert "ENVIRONMENT=test-env" in captured_cmd
+    assert "LOG_LEVEL=DEBUG" in captured_cmd
+    assert "LOGFIRE_TOKEN=lf-token-abc" in captured_cmd
+    assert "LOGFIRE_TRACEPARENT=00-trace-span-01" in captured_cmd
+
+
+@pytest.mark.asyncio
 async def test_kill_container_evicts_cached_port(monkeypatch: MonkeyPatch) -> None:
     fake = _FakePodmanPort("0.0.0.0:55002\n")
 
