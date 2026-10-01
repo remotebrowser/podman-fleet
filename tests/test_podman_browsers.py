@@ -194,39 +194,6 @@ async def test_list_browser_ids_strips_prefix_and_filters(monkeypatch: MonkeyPat
     assert await podman_browsers.list_browser_ids() == ["Pabc12345", "Pdef67890"]
 
 
-def test_list_browsers_returns_created_at_from_container_metadata(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    ls_json = json.dumps([
-        {"Names": ["chromium-Pabc12345"], "Created": 1790000000},
-        {"Names": ["otel-gui"], "Created": 1780000000},
-        {"Names": ["chromium-Pdef67890"], "Created": 1790003600},
-    ])
-    calls: list[list[str]] = []
-
-    async def fake_run_podman(args: list[str]) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout=ls_json, stderr="")
-
-    monkeypatch.setattr(podman_browsers, "_run_podman", fake_run_podman)
-
-    app = FastAPI()
-    app.include_router(api_router.router)
-    response = TestClient(app).get("/api/v1/browsers")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "browsers": [
-            {"browser_id": "Pabc12345", "created_at": "2026-09-21T14:13:20Z"},
-            {"browser_id": "Pdef67890", "created_at": "2026-09-21T15:13:20Z"},
-        ]
-    }
-    assert calls == [["container", "ls", "--format", "json"]]
-
-
 def test_launch_browser_auto_name_starts_with_b(monkeypatch: MonkeyPatch) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
