@@ -340,7 +340,7 @@ async def test_launch_container_passes_logfire_env_vars(monkeypatch: MonkeyPatch
     monkeypatch.setattr(podman_browsers.settings, "OTEL_SERVICE_NAME", "svc-under-test")
     monkeypatch.setattr(podman_browsers.settings, "ENVIRONMENT", "test-env")
     monkeypatch.setattr(podman_browsers.settings, "OTEL_LOG_LEVEL", "DEBUG")
-    monkeypatch.setattr(podman_browsers.settings, "LOGFIRE_TOKEN", "lf-token-abc")
+    monkeypatch.setattr(podman_browsers, "logfire_token", lambda: "lf-token-abc")
     monkeypatch.setattr(podman_browsers, "current_traceparent", lambda: "00-trace-span-01")
 
     captured_cmd: list[str] = []

@@ -12,7 +12,7 @@ from opentelemetry import trace
 
 from podmanfleet.config import settings
 from podmanfleet.residential_proxy import get_proxy_config
-from podmanfleet.tracing import current_traceparent
+from podmanfleet.tracing import current_traceparent, logfire_token
 
 _DOCKER_INTERNAL_HOST = "172.17.0.1"
 
@@ -120,7 +120,7 @@ async def launch_container(image_name: str | None = None) -> str:
         "SERVICE_NAME": settings.OTEL_SERVICE_NAME,
         "ENVIRONMENT": settings.ENVIRONMENT,
         "LOG_LEVEL": settings.OTEL_LOG_LEVEL,
-        "LOGFIRE_TOKEN": settings.LOGFIRE_TOKEN,
+        "LOGFIRE_TOKEN": logfire_token(),
         "LOGFIRE_TRACEPARENT": current_traceparent(),
     }
     for key, value in container_env.items():

@@ -62,6 +62,17 @@ def instrument_fastapi(app: FastAPI) -> None:
     )
 
 
+def logfire_token() -> str:
+    """The Logfire write token, pulled from the `Authorization` entry of
+    `OTEL_EXPORTER_OTLP_HEADERS` (the same token already authenticates this app's own
+    OTLP export to Logfire) rather than provisioning a second copy of the same secret."""
+    for pair in settings.OTEL_EXPORTER_OTLP_HEADERS.split(","):
+        key, _, value = pair.partition("=")
+        if key.strip().lower() == "authorization":
+            return value.strip()
+    return ""
+
+
 def current_traceparent() -> str:
     """W3C traceparent for the span active when this is called.
 

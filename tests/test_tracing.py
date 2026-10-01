@@ -75,3 +75,24 @@ def test_current_traceparent_empty_without_active_span(monkeypatch: MonkeyPatch)
     monkeypatch.setattr(trace, "get_current_span", lambda context=None: trace.INVALID_SPAN)
 
     assert tracing.current_traceparent() == ""
+
+
+def test_logfire_token_parsed_from_otlp_headers(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        tracing.settings, "OTEL_EXPORTER_OTLP_HEADERS", "Authorization=lf-token-abc"
+    )
+    assert tracing.logfire_token() == "lf-token-abc"
+
+
+def test_logfire_token_parsed_among_multiple_headers(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        tracing.settings,
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "x-custom=foo,Authorization=lf-token-abc,x-other=bar",
+    )
+    assert tracing.logfire_token() == "lf-token-abc"
+
+
+def test_logfire_token_empty_when_no_authorization_header(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(tracing.settings, "OTEL_EXPORTER_OTLP_HEADERS", "")
+    assert tracing.logfire_token() == ""
