@@ -44,17 +44,12 @@ _Example_: `curl localhost:8400/api/v1/browsers/xyz123` returns:
 
 ### List all browsers
 
-`GET /api/v1/browsers` returns all running browsers with their creation time (UTC).
+`GET /api/v1/browsers` returns a JSON array with the IDs of all running browsers.
 
 _Example_: `curl localhost:8400/api/v1/browsers` returns:
 
 ```json
-{
-  "browsers": [
-    { "browser_id": "Pxyz12345", "created_at": "2026-09-27T22:26:03Z" },
-    { "browser_id": "Pabc23456", "created_at": "2026-09-27T22:26:04Z" }
-  ]
-}
+["xyz123", "abc234"]
 ```
 
 ### Connect to a browser over CDP

@@ -3,19 +3,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
-from pydantic import BaseModel
 
 from podmanfleet import podman_browsers
 from podmanfleet.cdp_bridge import router as cdp_router
 from podmanfleet.config import settings
 from podmanfleet.live_view import router as vnc_router
-from podmanfleet.podman_browsers import BrowserInfo, ProxyVerificationError
+from podmanfleet.podman_browsers import ProxyVerificationError
 
 router = APIRouter()
-
-
-class BrowserList(BaseModel):
-    browsers: list[BrowserInfo]
 
 
 @router.post("/api/v1/browsers")
@@ -87,10 +82,10 @@ async def get_browser(browser_id: str) -> dict[str, Any]:
 
 
 @router.get("/api/v1/browsers")
-async def list_browsers() -> BrowserList:
+async def list_browsers() -> JSONResponse:
     logger.info("Enumerating all browsers...")
     try:
-        return BrowserList(browsers=await podman_browsers.list_browsers())
+        return JSONResponse(await podman_browsers.list_browser_ids())
     except Exception as e:
         detail = "Unable to list all browsers"
         logger.error(f"{detail} Exception={e}")
