@@ -2,14 +2,19 @@
 message: the CDP relay pushes every frame across the ASGI send/receive boundary, so those
 per-message spans flood the OTLP endpoint with two spans per frame."""
 
+import re
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 from pytest import MonkeyPatch
 
 from podmanfleet import tracing
 from podmanfleet.config import settings
+
+_TRACEPARENT_RE = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 
 
 @pytest.fixture
@@ -48,3 +53,25 @@ def test_excludes_the_per_message_send_and_receive_spans(
     assert instrumented_calls[0]["app"] is app
     assert instrumented_calls[0]["excluded_urls"] == "/health"
     assert instrumented_calls[0]["exclude_spans"] == ["send", "receive"]
+
+
+def test_current_traceparent_empty_when_otel_disabled(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(tracing.settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    assert tracing.current_traceparent() == ""
+
+
+def test_current_traceparent_builds_w3c_string_for_active_span(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(tracing.settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+    tracer = TracerProvider().get_tracer(__name__)
+    with tracer.start_as_current_span("test-span"):
+        traceparent = tracing.current_traceparent()
+
+    assert _TRACEPARENT_RE.match(traceparent)
+
+
+def test_current_traceparent_empty_without_active_span(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(tracing.settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+    monkeypatch.setattr(trace, "get_current_span", lambda context=None: trace.INVALID_SPAN)
+
+    assert tracing.current_traceparent() == ""

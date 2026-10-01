@@ -19,6 +19,7 @@ class _Settings(BrowserSettings, BaseSettings):
     OTEL_SERVICE_NAME: str = "podman-fleet"
     OTEL_LOG_LEVEL: str = "INFO"
     SENTRY_DSN: str = ""
+    LOGFIRE_TOKEN: str = ""
 
 
 settings = _Settings()
