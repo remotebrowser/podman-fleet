@@ -52,6 +52,19 @@ _Example_: `curl localhost:8400/api/v1/browsers` returns:
 ["xyz123", "abc234"]
 ```
 
+`GET /api/v2/browsers` returns all running browsers with their creation time (UTC).
+
+_Example_: `curl localhost:8400/api/v2/browsers` returns:
+
+```json
+{
+  "browsers": [
+    { "browser_id": "Pxyz12345", "created_at": "2026-09-27T22:26:03Z" },
+    { "browser_id": "Pabc23456", "created_at": "2026-09-27T22:26:04Z" }
+  ]
+}
+```
+
 ### Connect to a browser over CDP
 
 `GET /api/v1/browsers/{browser_id}/cdp` upgrades the connection to a WebSocket and tunnels a [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) (CDP) session to the specified browser. If the browser's debugger URL cannot be resolved after several retries, the server closes the WebSocket with close code 4502.
