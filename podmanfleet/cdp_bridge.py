@@ -154,7 +154,7 @@ async def _relay_browser_cdp(client_ws: WebSocket, browser_id: str) -> None:
                 f"[CDP] Attempt {attempt + 1}/10 failed to get debugger URL from {browser_id}: {e}"
             )
         if remote_url is not None:
-            logger.info(f"[CDP] Got remote URL: {remote_url}")
+            logger.info("[CDP] Got remote URL: {}", remote_url)
             break
         if attempt < 9:
             logger.debug("[CDP] Retrying in 3 seconds...")
@@ -164,7 +164,7 @@ async def _relay_browser_cdp(client_ws: WebSocket, browser_id: str) -> None:
         await client_ws.close(code=4502, reason="Failed to get debugger URL")
         return
 
-    logger.info(f"[CDP] Client connected, bridging to {remote_url}")
+    logger.info("[CDP] Client connected, bridging to {}", remote_url)
     await _websocket_bridge(client_ws, remote_url, browser_id)
 
 
