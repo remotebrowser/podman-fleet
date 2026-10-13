@@ -76,7 +76,7 @@ async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: s
             close_timeout=10,
             max_size=10 * 1024 * 1024,
         ) as remote_ws:
-            logger.info("[CDP] Connected to remote WebSocket")
+            logger.debug("[CDP] Connected to remote WebSocket")
 
             async def client_to_remote() -> None:
                 try:
@@ -87,7 +87,7 @@ async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: s
                         )
                         await remote_ws.send(message)
                 except (WebSocketDisconnect, RuntimeError):
-                    logger.info("[CDP] Client disconnected")
+                    logger.debug("[CDP] Client disconnected")
                 except Exception as e:
                     logger.error(f"[CDP] client_to_remote error: {type(e).__name__}: {e}")
 
