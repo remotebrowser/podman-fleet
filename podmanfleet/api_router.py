@@ -83,7 +83,7 @@ async def get_browser(browser_id: str) -> dict[str, Any]:
 
 @router.get("/api/v1/browsers")
 async def list_browsers() -> JSONResponse:
-    logger.info("Enumerating all browsers...")
+    logger.debug("Enumerating all browsers...")
     try:
         return JSONResponse(await podman_browsers.list_browser_ids())
     except Exception as e:
