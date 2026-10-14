@@ -82,3 +82,11 @@ class TestBrowserListing:
         response = client.get("/api/v1/browsers")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+
+    def test_list_browsers_v2(self, client: httpx.Client) -> None:
+        response = client.get("/api/v2/browsers")
+        assert response.status_code == 200
+        browsers = response.json()["browsers"]
+        assert isinstance(browsers, list)
+        for browser in browsers:
+            assert set(browser) == {"browser_id", "created_at"}
