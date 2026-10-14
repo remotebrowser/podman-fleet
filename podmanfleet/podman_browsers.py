@@ -21,6 +21,8 @@ _tracer = trace.get_tracer(__name__)
 # Shared name prefix: a browser with id `abc` is a podman container named `chromium-abc`.
 BROWSER_NAME_PREFIX = "chromium-"
 
+BROWSER_VARIANTS = frozenset({"chrome", "cloak"})
+
 # Charset for server-assigned browser ids (no ambiguous 0/O, 1/l or vowels that spell words).
 _FRIENDLY_CHARS = "23456789abcdefghijkmnpqrstuvwxyz"
 
@@ -351,6 +353,22 @@ async def get_container_public_ip(
 
 async def query_last_activity(browser_id: str) -> float | None:
     return await _get_container_last_activity(f"{BROWSER_NAME_PREFIX}{browser_id}")
+
+
+async def switch_browser(browser_id: str, variant: str) -> None:
+    """Switch the container's active browser binary via the chrome-live image's switch-browser CLI.
+
+    No-op for "chrome" (the default the container already boots with). CloakBrowser (amd64 only)
+    is the only other variant the image currently ships."""
+    if variant == "chrome":
+        return
+    container_name = f"{BROWSER_NAME_PREFIX}{browser_id}"
+    result = await _run_podman(["exec", container_name, "switch-browser", variant])
+    if result.returncode != 0:
+        raise Exception(
+            f"switch-browser {variant} failed on {container_name}: "
+            f"exit={result.returncode} output={result.stdout!r} stderr={result.stderr!r}"
+        )
 
 
 async def configure_browser(

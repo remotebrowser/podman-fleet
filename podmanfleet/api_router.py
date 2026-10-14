@@ -15,7 +15,10 @@ router = APIRouter()
 
 @router.post("/api/v1/browsers")
 async def launch_browser(request: Request) -> dict[str, Any]:
-    logger.info("Launching browser (server-assigned id)...")
+    variant = request.headers.get("x-browser-type", "chrome")
+    if variant not in podman_browsers.BROWSER_VARIANTS:
+        raise HTTPException(status_code=422, detail=f"Invalid x-browser-type: {variant!r}")
+    logger.info(f"Launching browser (server-assigned id, variant={variant})...")
 
     max_browsers = settings.MAX_BROWSERS
     if max_browsers > 0:
@@ -31,6 +34,8 @@ async def launch_browser(request: Request) -> dict[str, Any]:
     try:
         origin_ip = request.headers.get("x-origin-ip")
         browser_id = await podman_browsers.launch_container()
+        if variant != "chrome":
+            await podman_browsers.switch_browser(browser_id, variant)
         try:
             ip = await podman_browsers.configure_browser(browser_id, origin_ip)
         except ProxyVerificationError:
