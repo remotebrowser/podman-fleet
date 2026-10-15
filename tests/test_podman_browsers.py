@@ -335,6 +335,73 @@ async def test_get_host_port_does_not_cache_failed_lookup(monkeypatch: MonkeyPat
     assert calls == 2
 
 
+def _fake_podman(outputs: dict[str, str | Exception]):
+    """A `_run_podman` stand-in that answers by subcommand (`exec`, `inspect`)."""
+
+    async def fake(args: list[str]) -> subprocess.CompletedProcess[str]:
+        output = outputs[args[0]]
+        if isinstance(output, Exception):
+            raise output
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=output, stderr="")
+
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_last_activity_is_newest_history_visit(monkeypatch: MonkeyPatch) -> None:
+    # 13_400_000_000_000_000 us since 1601-01-01 is 1_755_526_400 s since 1970-01-01.
+    monkeypatch.setattr(
+        podman_browsers,
+        "_run_podman",
+        _fake_podman({"exec": "13400000000000000\n", "inspect": "1700000000\n"}),
+    )
+
+    assert await podman_browsers.query_last_activity("Pabc23456") == 1_755_526_400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("history_output", ["", "\n"], ids=["no-history-file", "no-visits"])
+async def test_last_activity_before_first_visit_is_create_time(
+    monkeypatch: MonkeyPatch, history_output: str
+) -> None:
+    monkeypatch.setattr(
+        podman_browsers,
+        "_run_podman",
+        _fake_podman({"exec": history_output, "inspect": "1700000000\n"}),
+    )
+
+    assert await podman_browsers.query_last_activity("Pabc23456") == 1_700_000_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "history_output",
+    [subprocess.CalledProcessError(1, ["podman"]), "Error: malformed\n"],
+    ids=["exec-fails", "garbage"],
+)
+async def test_failed_history_lookup_is_none_not_create_time(
+    monkeypatch: MonkeyPatch, history_output: str | Exception
+) -> None:
+    monkeypatch.setattr(
+        podman_browsers,
+        "_run_podman",
+        _fake_podman({"exec": history_output, "inspect": "1700000000\n"}),
+    )
+
+    assert await podman_browsers.query_last_activity("Pabc23456") is None
+
+
+@pytest.mark.asyncio
+async def test_last_activity_is_none_when_create_time_unreadable(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        podman_browsers,
+        "_run_podman",
+        _fake_podman({"exec": "", "inspect": subprocess.CalledProcessError(125, ["podman"])}),
+    )
+
+    assert await podman_browsers.query_last_activity("Pabc23456") is None
+
+
 @pytest.mark.asyncio
 async def test_launch_container_passes_logfire_env_vars(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(podman_browsers.settings, "OTEL_SERVICE_NAME", "svc-under-test")
