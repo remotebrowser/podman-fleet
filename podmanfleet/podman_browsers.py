@@ -230,32 +230,29 @@ async def count_running_browsers() -> int:
     return count
 
 
-async def _get_container_last_activity(container_name: str) -> float | None:
+async def _get_container_last_visit(container_name: str) -> float | None:
+    """Unix time of the newest page visit in Chrome's History, or None if there is none yet.
+    Raises if the History lookup itself fails."""
+    # Chrome may not have created History before the first visit; that is "no visit", not an error.
+    result = await _run_podman([
+        "exec",
+        container_name,
+        "sh",
+        "-c",
+        "H=/home/user/chrome-profile/Default/History; [ -f $H ] || exit 0;"
+        " cp $H db && sqlite3 db 'select MAX(last_visit_time) from urls;'",
+    ])
+    output = result.stdout.strip()
+    if not output:
+        return None
+    return (float(output) / 1_000_000) - 11644473600
+
+
+async def _get_container_created_at(container_name: str) -> float | None:
     try:
-        await _run_podman([
-            "exec",
-            container_name,
-            "sh",
-            "-c",
-            "cp /home/user/chrome-profile/Default/History db",
-        ])
-
-        result = await _run_podman([
-            "exec",
-            container_name,
-            "sqlite3",
-            "db",
-            "select MAX(last_visit_time) from urls;",
-        ])
-
-        if result.returncode == 0 and result.stdout:
-            chromium_time = float(result.stdout.strip())
-            unix_epoch = (chromium_time / 1_000_000) - 11644473600
-            return unix_epoch
-        return None
-    except subprocess.CalledProcessError:
-        return None
-    except Exception:
+        result = await _run_podman(["inspect", "--format", "{{.Created.Unix}}", container_name])
+        return float(result.stdout.strip())
+    except (subprocess.CalledProcessError, ValueError):
         return None
 
 
@@ -352,7 +349,16 @@ async def get_container_public_ip(
 
 
 async def query_last_activity(browser_id: str) -> float | None:
-    return await _get_container_last_activity(f"{BROWSER_NAME_PREFIX}{browser_id}")
+    """Unix time of the browser's newest page visit, or its container create time before the
+    first visit. None if the History lookup fails."""
+    container_name = f"{BROWSER_NAME_PREFIX}{browser_id}"
+    try:
+        last_visit = await _get_container_last_visit(container_name)
+    except (subprocess.CalledProcessError, ValueError):
+        return None
+    if last_visit is not None:
+        return last_visit
+    return await _get_container_created_at(container_name)
 
 
 async def switch_browser(browser_id: str, variant: str) -> None:
