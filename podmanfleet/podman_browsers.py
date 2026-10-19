@@ -313,11 +313,42 @@ def container_host() -> str:
     return _DOCKER_INTERNAL_HOST if os.path.exists("/.dockerenv") else "127.0.0.1"
 
 
+_CURL_TIMING_FIELDS: tuple[str, ...] = (
+    "time_namelookup",
+    "time_connect",
+    "time_appconnect",
+    "time_starttransfer",
+    "time_total",
+)
+# Printed after the body, so the IP is everything before the last newline.
+_CURL_WRITE_OUT = "\n" + " ".join(f"%{{{f}}}" for f in _CURL_TIMING_FIELDS)
+
+
+def _parse_curl_output(stdout: str) -> tuple[str | None, dict[str, float]]:
+    body, _, timing_line = stdout.rpartition("\n")
+    try:
+        timings = dict(zip(_CURL_TIMING_FIELDS, map(float, timing_line.split()), strict=True))
+    except ValueError:
+        return stdout.strip() or None, {}
+    return body.strip() or None, timings
+
+
+def _record_curl_timings(stdout: str) -> str | None:
+    """Put curl's phase timings on the span, so a slow check shows which phase stalled.
+    Spans keep only the last attempt's timings; ip_check.attempts tells if there were retries."""
+    ip, timings = _parse_curl_output(stdout)
+    span = trace.get_current_span()
+    for name, value in timings.items():
+        span.set_attribute(f"ip_check.{name}", value)
+    return ip
+
+
 @_tracer.start_as_current_span("get_container_public_ip")
 async def get_container_public_ip(
     container_name: str, *, retries: int = 5, retry_delay: float = 2.0
 ) -> str | None:
     for attempt in range(1, retries + 1):
+        trace.get_current_span().set_attribute("ip_check.attempts", attempt)
         try:
             result = await _run_podman([
                 "exec",
@@ -328,15 +359,19 @@ async def get_container_public_ip(
                 "10",
                 "--proxy",
                 "http://127.0.0.1:8119",
+                "-w",
+                _CURL_WRITE_OUT,
                 "https://ip.fly.dev",
             ])
-            ip = result.stdout.strip() or None
+            ip = _record_curl_timings(result.stdout)
             if ip:
                 return ip
             logger.warning(
                 f"IP check attempt {attempt}/{retries} in {container_name}: empty response (stderr: {result.stderr.strip()!r})"
             )
         except subprocess.CalledProcessError as e:
+            # curl still prints the timings when it fails.
+            _record_curl_timings(e.output or "")
             logger.warning(
                 f"IP check attempt {attempt}/{retries} in {container_name} failed (exit {e.returncode}): {e.stderr.strip()!r}"
             )

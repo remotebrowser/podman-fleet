@@ -553,3 +553,25 @@ def test_launch_allowed_when_max_browsers_is_unset(monkeypatch: MonkeyPatch) -> 
 
     response = client.post("/api/v1/browsers")
     assert response.status_code == 200
+
+
+def test_parse_curl_output_splits_ip_and_timings() -> None:
+    ip, timings = podman_browsers._parse_curl_output("1.2.3.4\n0.001 0.002 0.5 0.8 0.81")
+    assert ip == "1.2.3.4"
+    assert timings == {
+        "time_namelookup": 0.001,
+        "time_connect": 0.002,
+        "time_appconnect": 0.5,
+        "time_starttransfer": 0.8,
+        "time_total": 0.81,
+    }
+
+
+def test_parse_curl_output_on_failure_keeps_timings_without_ip() -> None:
+    ip, timings = podman_browsers._parse_curl_output("\n0.0 0.0 0.0 0.0 10.002")
+    assert ip is None
+    assert timings["time_total"] == 10.002
+
+
+def test_parse_curl_output_without_timing_line_falls_back_to_body() -> None:
+    assert podman_browsers._parse_curl_output("1.2.3.4\n") == ("1.2.3.4", {})
