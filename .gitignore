@@ -145,7 +145,10 @@ celerybeat.pid
 
 # Environments
 .env
-.envrc
+# .envrc is tracked on purpose: it is the direnv entry point for flake.nix and
+# holds no secrets — those live in .env above. The line below overrides the
+# stock Python template, which lumps .envrc in with the ignored env files.
+!.envrc
 .venv
 env/
 .venv/
