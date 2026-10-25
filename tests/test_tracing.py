@@ -3,6 +3,7 @@ message: the CDP relay pushes every frame across the ASGI send/receive boundary,
 per-message spans flood the OTLP endpoint with two spans per frame."""
 
 import re
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -77,22 +78,37 @@ def test_current_traceparent_empty_without_active_span(monkeypatch: MonkeyPatch)
     assert tracing.current_traceparent() == ""
 
 
-def test_logfire_token_parsed_from_otlp_headers(monkeypatch: MonkeyPatch) -> None:
+def test_setup_otel_passes_headers_and_environment_from_settings(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+    monkeypatch.setattr(settings, "OTEL_EXPORTER_OTLP_HEADERS", "Authorization=lf-token-abc")
+    monkeypatch.setattr(settings, "ENV", "test-env")
+    exporters: list[dict[str, Any]] = []
+
+    def spy_exporter(**kwargs: Any) -> Any:
+        exporters.append(kwargs)
+        return SimpleNamespace(export=None, shutdown=None, force_flush=None)
+
+    providers: list[Any] = []
+    monkeypatch.setattr(tracing, "OTLPSpanExporter", spy_exporter)
+    monkeypatch.setattr(tracing, "OTLPLogExporter", spy_exporter)
+    monkeypatch.setattr(tracing, "BatchSpanProcessor", lambda exporter: SimpleNamespace())
+    monkeypatch.setattr(tracing, "BatchLogRecordProcessor", lambda exporter: SimpleNamespace())
+    monkeypatch.setattr(tracing.TracerProvider, "add_span_processor", lambda self, p: None)
+    monkeypatch.setattr(tracing.LoggerProvider, "add_log_record_processor", lambda self, p: None)
+    monkeypatch.setattr(tracing.trace, "set_tracer_provider", providers.append)
+    monkeypatch.setattr(tracing, "set_logger_provider", providers.append)
     monkeypatch.setattr(
-        tracing.settings, "OTEL_EXPORTER_OTLP_HEADERS", "Authorization=lf-token-abc"
+        tracing, "HTTPXClientInstrumentor", lambda: SimpleNamespace(instrument=lambda: None)
     )
-    assert tracing.logfire_token() == "lf-token-abc"
+
+    tracing.setup_otel()
+
+    assert [e["headers"] for e in exporters] == [{"authorization": "lf-token-abc"}] * 2
+    assert providers[0].resource.attributes["deployment.environment.name"] == "test-env"
 
 
-def test_logfire_token_parsed_among_multiple_headers(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tracing.settings,
-        "OTEL_EXPORTER_OTLP_HEADERS",
-        "x-custom=foo,Authorization=lf-token-abc,x-other=bar",
-    )
-    assert tracing.logfire_token() == "lf-token-abc"
-
-
-def test_logfire_token_empty_when_no_authorization_header(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(tracing.settings, "OTEL_EXPORTER_OTLP_HEADERS", "")
-    assert tracing.logfire_token() == ""
+def test_log_level_is_case_insensitive(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+    assert type(settings)().LOG_LEVEL == "DEBUG"
