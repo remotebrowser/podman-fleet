@@ -7,7 +7,7 @@ on:
         description: Which host to deploy to
         type: choice
         default: all
-        options: [all, gce, lambda, dev]
+        options: [all, gce, lambda]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,8 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        item: ${{ fromJSON(inputs.host == 'gce' && '["prd_gce"]' || inputs.host == 'lambda' && '["prd_lambda"]' || inputs.host
-          == 'dev' && '["dev_lambda"]' || '["prd_gce", "prd_lambda", "dev_lambda"]') }}
+        item: ${{ fromJSON(inputs.host == 'gce' && '["prd_gce"]' || inputs.host == 'lambda' && '["prd_lambda"]' || '["prd_gce",
+          "prd_lambda"]') }}
     env:
       OP_VAULT: podman-fleet
     steps:
