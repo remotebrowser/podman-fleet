@@ -403,11 +403,16 @@ async def test_last_activity_is_none_when_create_time_unreadable(monkeypatch: Mo
 
 
 @pytest.mark.asyncio
-async def test_launch_container_passes_logfire_env_vars(monkeypatch: MonkeyPatch) -> None:
+async def test_launch_container_passes_otel_env_vars(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(podman_browsers.settings, "OTEL_SERVICE_NAME", "svc-under-test")
-    monkeypatch.setattr(podman_browsers.settings, "ENVIRONMENT", "test-env")
-    monkeypatch.setattr(podman_browsers.settings, "OTEL_LOG_LEVEL", "DEBUG")
-    monkeypatch.setattr(podman_browsers, "logfire_token", lambda: "lf-token-abc")
+    monkeypatch.setattr(podman_browsers.settings, "ENV", "test-env")
+    monkeypatch.setattr(podman_browsers.settings, "LOG_LEVEL", "DEBUG")
+    monkeypatch.setattr(
+        podman_browsers.settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318"
+    )
+    monkeypatch.setattr(
+        podman_browsers.settings, "OTEL_EXPORTER_OTLP_HEADERS", "Authorization=lf-token-abc"
+    )
     monkeypatch.setattr(podman_browsers, "current_traceparent", lambda: "00-trace-span-01")
 
     captured_cmd: list[str] = []
@@ -425,11 +430,12 @@ async def test_launch_container_passes_logfire_env_vars(monkeypatch: MonkeyPatch
     await podman_browsers.launch_container()
 
     assert "-e" in captured_cmd
-    assert "SERVICE_NAME=svc-under-test" in captured_cmd
+    assert "OTEL_SERVICE_NAME=svc-under-test" in captured_cmd
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318" in captured_cmd
+    assert "OTEL_EXPORTER_OTLP_HEADERS=Authorization=lf-token-abc" in captured_cmd
+    assert "TRACEPARENT=00-trace-span-01" in captured_cmd
     assert "ENVIRONMENT=test-env" in captured_cmd
     assert "LOG_LEVEL=DEBUG" in captured_cmd
-    assert "LOGFIRE_TOKEN=lf-token-abc" in captured_cmd
-    assert "LOGFIRE_TRACEPARENT=00-trace-span-01" in captured_cmd
 
 
 @pytest.mark.asyncio

@@ -40,7 +40,7 @@ def _setup_logger():
         {
             "sink": rich_handler,
             "format": _format_with_extra,
-            "level": settings.OTEL_LOG_LEVEL,
+            "level": settings.LOG_LEVEL,
             "backtrace": True,
             "diagnose": True,
         }
@@ -72,7 +72,7 @@ def _setup_sentry():
     logger.info("Initializing Sentry")
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
-        environment=settings.ENVIRONMENT,
+        environment=settings.ENV,
         integrations=[
             StarletteIntegration(
                 transaction_style="endpoint",
@@ -82,7 +82,7 @@ def _setup_sentry():
                 transaction_style="endpoint",
                 failed_request_status_codes={403, *range(500, 599)},
             ),
-            LoggingIntegration(level=logging.getLevelNamesMapping()[settings.OTEL_LOG_LEVEL]),
+            LoggingIntegration(level=logging.getLevelNamesMapping()[settings.LOG_LEVEL]),
         ],
         send_default_pii=True,
     )

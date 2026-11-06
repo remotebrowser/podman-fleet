@@ -15,6 +15,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.util.re import parse_env_headers
 
 from podmanfleet.config import settings
 
@@ -34,19 +35,21 @@ def setup_otel() -> None:
     logger.info("Initializing OpenTelemetry")
     resource = Resource.create({
         "service.name": settings.OTEL_SERVICE_NAME,
-        "deployment.environment": settings.ENVIRONMENT,
+        "deployment.environment.name": settings.ENV,
     })
     endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT.rstrip("/")
+    # The exporters only read headers from the process env, which misses values from `.env`.
+    headers = parse_env_headers(settings.OTEL_EXPORTER_OTLP_HEADERS, liberal=True)
 
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces"))
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces", headers=headers))
     )
     trace.set_tracer_provider(tracer_provider)
 
     logger_provider = LoggerProvider(resource=resource)
     logger_provider.add_log_record_processor(
-        BatchLogRecordProcessor(OTLPLogExporter(endpoint=f"{endpoint}/v1/logs"))
+        BatchLogRecordProcessor(OTLPLogExporter(endpoint=f"{endpoint}/v1/logs", headers=headers))
     )
     set_logger_provider(logger_provider)
 
@@ -62,22 +65,11 @@ def instrument_fastapi(app: FastAPI) -> None:
     )
 
 
-def logfire_token() -> str:
-    """The Logfire write token, pulled from the `Authorization` entry of
-    `OTEL_EXPORTER_OTLP_HEADERS` (the same token already authenticates this app's own
-    OTLP export to Logfire) rather than provisioning a second copy of the same secret."""
-    for pair in settings.OTEL_EXPORTER_OTLP_HEADERS.split(","):
-        key, _, value = pair.partition("=")
-        if key.strip().lower() == "authorization":
-            return value.strip()
-    return ""
-
-
 def current_traceparent() -> str:
     """W3C traceparent for the span active when this is called.
 
     Empty string when OTel is disabled or there's no active span — callers
-    should treat "" as "omit LOGFIRE_TRACEPARENT"."""
+    should treat "" as "omit TRACEPARENT"."""
     if not _otel_enabled():
         return ""
     carrier: dict[str, str] = {}
@@ -90,6 +82,6 @@ def otel_loguru_handler() -> "HandlerConfig | None":
         return None
     return {
         "sink": LoggingHandler(logging.NOTSET),
-        "level": settings.OTEL_LOG_LEVEL,
+        "level": settings.LOG_LEVEL,
         "format": "{message}",
     }

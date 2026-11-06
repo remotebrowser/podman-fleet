@@ -12,7 +12,7 @@ from opentelemetry import trace
 
 from podmanfleet.config import settings
 from podmanfleet.residential_proxy import get_proxy_config
-from podmanfleet.tracing import current_traceparent, logfire_token
+from podmanfleet.tracing import current_traceparent
 
 _DOCKER_INTERNAL_HOST = "172.17.0.1"
 
@@ -119,11 +119,13 @@ async def launch_container(image_name: str | None = None) -> str:
         cmd.append("--privileged")
 
     container_env = {
-        "SERVICE_NAME": settings.OTEL_SERVICE_NAME,
-        "ENVIRONMENT": settings.ENVIRONMENT,
-        "LOG_LEVEL": settings.OTEL_LOG_LEVEL,
-        "LOGFIRE_TOKEN": logfire_token(),
-        "LOGFIRE_TRACEPARENT": current_traceparent(),
+        "OTEL_SERVICE_NAME": settings.OTEL_SERVICE_NAME,
+        "OTEL_EXPORTER_OTLP_ENDPOINT": settings.OTEL_EXPORTER_OTLP_ENDPOINT,
+        "OTEL_EXPORTER_OTLP_HEADERS": settings.OTEL_EXPORTER_OTLP_HEADERS,
+        "TRACEPARENT": current_traceparent(),
+        # chrome-live's browser-trace still reads ENVIRONMENT, not ENV.
+        "ENVIRONMENT": settings.ENV,
+        "LOG_LEVEL": settings.LOG_LEVEL,
     }
     for key, value in container_env.items():
         cmd.extend(["-e", f"{key}={value}"])
