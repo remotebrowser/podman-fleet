@@ -1,5 +1,4 @@
 import asyncio
-from typing import Any
 
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -8,63 +7,9 @@ from loguru import logger
 from websockets.exceptions import ConnectionClosed
 
 from podmanfleet import podman_browsers
-from podmanfleet.cdp_client import CDPClient, open_cdp_url
 from podmanfleet.podman_browsers import BROWSER_NAME_PREFIX
 
 router = APIRouter()
-
-
-async def _open_browser_cdp_client(browser_id: str) -> CDPClient:
-    cdp_base_url = await podman_browsers.get_cdp_url(browser_id)
-    ws_url = await podman_browsers.get_browser_websocket_debugger_url(cdp_base_url)
-    return await open_cdp_url(ws_url, timeout=10.0)
-
-
-async def _get_page_list(browser_id: str) -> list[str]:
-    # Enumerate browser-level pages via Target.getTargets; pages only.
-    try:
-        client = await _open_browser_cdp_client(browser_id)
-    except Exception as e:
-        logger.warning(f"[CDP] Could not open CDP client for {browser_id}: {type(e).__name__}: {e}")
-        return []
-    try:
-        result = await client.send("Target.getTargets")
-    except Exception as e:
-        logger.warning(f"[CDP] Target.getTargets failed for {browser_id}: {type(e).__name__}: {e}")
-        return []
-    finally:
-        await client.aclose()
-    target_infos: list[dict[str, Any]] = result.get("targetInfos", [])
-    return [str(info["targetId"]) for info in target_infos if info.get("type") == "page"]
-
-
-async def _find_browser_id(page_id: str) -> str | None:
-    containers = await podman_browsers.list_containers()
-    browser_ids = [
-        c[len(BROWSER_NAME_PREFIX) :] for c in containers if c.startswith(BROWSER_NAME_PREFIX)
-    ]
-    logger.debug(f"[CDP] scanning {len(browser_ids)} browser(s) for page_id={page_id}")
-
-    async def _browser_has_page(browser_id: str) -> str | None:
-        try:
-            page_ids = await _get_page_list(browser_id)
-        except Exception as e:
-            logger.warning(f"[CDP] Could not check pages for {browser_id}: {type(e).__name__}: {e}")
-            return None
-        return browser_id if page_id in page_ids else None
-
-    # Scan every browser concurrently instead of one at a time.
-    tasks = [asyncio.create_task(_browser_has_page(browser_id)) for browser_id in browser_ids]
-    try:
-        for coro in asyncio.as_completed(tasks):
-            result = await coro
-            if result is not None:
-                return result
-        return None
-    finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _websocket_bridge(client_ws: WebSocket, remote_url: str, browser_id: str) -> None:
@@ -173,55 +118,3 @@ async def cdp_browser_websocket_bridge_raw(client_ws: WebSocket, browser_id: str
     logger.debug(f"[CDP] Entered cdp_browser_websocket_bridge_raw for browser_id={browser_id}")
     await _relay_browser_cdp(client_ws, browser_id)
     logger.debug("[CDP] cdp_browser_websocket_bridge_raw exiting")
-
-
-@router.websocket("/devtools/{path:path}")
-async def cdp_devtools_websocket_bridge(client_ws: WebSocket, path: str) -> None:
-    logger.debug(f"[CDP] Entered cdp_devtools_websocket_bridge for path={path}")
-    await client_ws.accept()
-    logger.debug("[CDP] WebSocket accepted")
-
-    # Resolve the page id from the path's last segment; scan browsers via Target.getTargets.
-    parts = path.split("/")
-    page_id = parts[-1] if parts else None
-    if not page_id:
-        logger.error("[CDP] No page_id in path")
-        await client_ws.close(code=4000, reason="No page_id in path")
-        return
-
-    logger.debug(f"[CDP] Looking for page_id={page_id}")
-    browser_id = await _find_browser_id(page_id)
-    if browser_id:
-        logger.debug(f"[CDP] Found page {page_id} in browser {browser_id}")
-    else:
-        logger.error(f"[CDP] Page {page_id} not found in any browser")
-        await client_ws.close(code=4000, reason="Page not found in any browser")
-        return
-
-    # Retry resolving the per-page remote wss URL up to 10 times; first success wins.
-    remote_url: str | None = None
-    for attempt in range(10):
-        try:
-            cdp_base_url = await podman_browsers.get_cdp_url(browser_id)
-            remote_url = await podman_browsers.get_page_websocket_debugger_url(
-                cdp_base_url, page_id
-            )
-        except Exception as e:
-            logger.warning(
-                f"[CDP] Attempt {attempt + 1}/10 failed to get page URL for "
-                f"{browser_id}/{page_id}: {e}"
-            )
-        if remote_url is not None:
-            logger.info(f"[CDP] Got page remote URL: {remote_url}")
-            break
-        if attempt < 9:
-            logger.debug("[CDP] Retrying in 3 seconds...")
-            await asyncio.sleep(3)
-    else:
-        logger.error(f"[CDP] Could not get websocket URL for page {page_id}")
-        await client_ws.close(code=4502, reason="Failed to get page websocket URL")
-        return
-
-    logger.info(f"[CDP] Connecting to {remote_url}")
-    await _websocket_bridge(client_ws, remote_url, browser_id)
-    logger.debug("[CDP] cdp_devtools_websocket_bridge exiting")
